@@ -1,0 +1,180 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: participants
+// Document ID: {userId} (matches request.auth.uid)
+// Fields:
+//   - uid: string (required, immutable, == userId) - Owner Firebase Auth UID
+//   - displayName: string (required, 1..80 chars) - Public cohort display name (NO email/PII)
+//   - cohortRole: string (required, 1..40 chars) - Cohort label (e.g. 'Participant')
+//   - joinedAt: timestamp (optional, immutable on update)
+//   - updatedAt: timestamp (required)
+//
+// Collection: commitments
+// Document ID: {commitmentId} (pattern: "{uid}_{weekKey}", e.g., "abc123_2026-W45")
+// Fields:
+//   - uid: string (required, immutable, == request.auth.uid)
+//   - displayName: string (required, 1..80 chars) - Denormalized public name
+//   - weekKey: string (required, immutable, matches "^\\d{4}-W\\d{2}$")
+//   - weekLabel: string (required, 1..120 chars)
+//   - fastingCommitment: string (required, 1..300 chars)
+//   - prayerMinutes: number (required, 1..720)
+//   - prayerTimes: string (required, 1..200 chars)
+//   - prayerAltTimes: string (required, 1..200 chars)
+//   - meditationMinutes: number (required, 1..720)
+//   - meditationTimeRange: string (required, 1..200 chars)
+//   - reflectionNotes: string (required, 0..500 chars)
+//   - dailyStatus: map (required, keys: mon, tue, wed, thu, fri, sat, sun)
+//   - completedCount: number (required, 0..7)
+//   - skippedCount: number (required, 0..7)
+//   - adherenceStatus: string (required, in ['on-track', 'slipping', 'skipping'])
+//   - createdAt: timestamp (required, immutable on update)
+//   - updatedAt: timestamp (required)
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function uidUnchanged() {
+      return ('uid' in request.resource.data) &&
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return ('uid' in request.resource.data) &&
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidDayStatusValue(val) {
+      return val is string && val in ['completed', 'partial', 'skipped', 'pending'];
+    }
+
+    function isValidDailyStatusMap(dailyMap) {
+      return dailyMap is map &&
+        dailyMap.keys().hasOnly(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) &&
+        dailyMap.keys().hasAll(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) &&
+        isValidDayStatusValue(dailyMap.mon) &&
+        isValidDayStatusValue(dailyMap.tue) &&
+        isValidDayStatusValue(dailyMap.wed) &&
+        isValidDayStatusValue(dailyMap.thu) &&
+        isValidDayStatusValue(dailyMap.fri) &&
+        isValidDayStatusValue(dailyMap.sat) &&
+        isValidDayStatusValue(dailyMap.sun);
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+    function isValidParticipant(data, userId) {
+      return hasOnlyAllowedFields(['uid', 'displayName', 'cohortRole', 'joinedAt', 'updatedAt']) &&
+        hasRequiredFields(['uid', 'displayName', 'cohortRole', 'updatedAt']) &&
+        data.uid is string && data.uid == userId &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        data.cohortRole is string && data.cohortRole.size() >= 1 && data.cohortRole.size() <= 40 &&
+        (!('joinedAt' in data) || data.joinedAt is timestamp) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCommitment(data, commitmentId) {
+      let allowedFields = [
+        'uid',
+        'displayName',
+        'weekKey',
+        'weekLabel',
+        'fastingCommitment',
+        'prayerMinutes',
+        'prayerTimes',
+        'prayerAltTimes',
+        'meditationMinutes',
+        'meditationTimeRange',
+        'reflectionNotes',
+        'dailyStatus',
+        'completedCount',
+        'skippedCount',
+        'adherenceStatus',
+        'createdAt',
+        'updatedAt'
+      ];
+      return hasOnlyAllowedFields(allowedFields) &&
+        hasRequiredFields(allowedFields) &&
+        data.uid is string && data.uid == request.auth.uid &&
+        commitmentId == (data.uid + '_' + data.weekKey) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        data.weekKey is string && data.weekKey.matches("^\\d{4}-W\\d{2}$") &&
+        data.weekLabel is string && data.weekLabel.size() >= 1 && data.weekLabel.size() <= 120 &&
+        data.fastingCommitment is string && data.fastingCommitment.size() >= 1 && data.fastingCommitment.size() <= 300 &&
+        data.prayerMinutes is number && data.prayerMinutes >= 1 && data.prayerMinutes <= 720 &&
+        data.prayerTimes is string && data.prayerTimes.size() >= 1 && data.prayerTimes.size() <= 200 &&
+        data.prayerAltTimes is string && data.prayerAltTimes.size() >= 1 && data.prayerAltTimes.size() <= 200 &&
+        data.meditationMinutes is number && data.meditationMinutes >= 1 && data.meditationMinutes <= 720 &&
+        data.meditationTimeRange is string && data.meditationTimeRange.size() >= 1 && data.meditationTimeRange.size() <= 200 &&
+        data.reflectionNotes is string && data.reflectionNotes.size() <= 500 &&
+        isValidDailyStatusMap(data.dailyStatus) &&
+        data.completedCount is number && data.completedCount >= 0 && data.completedCount <= 7 &&
+        data.skippedCount is number && data.skippedCount >= 0 && data.skippedCount <= 7 &&
+        data.adherenceStatus is string && data.adherenceStatus in ['on-track', 'slipping', 'skipping'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Public cohort participants directory (contains zero PII / no emails)
+    // Explicitly readable on the home page so everyone can see everyone's progress
+    match /participants/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId) &&
+        uidUnchanged() &&
+        isValidParticipant(request.resource.data, userId);
+      allow update: if isOwner(userId) &&
+        uidNotModified() &&
+        isValidParticipant(request.resource.data, userId) &&
+        (!('joinedAt' in resource.data) || request.resource.data.joinedAt == resource.data.joinedAt);
+      allow delete: if false;
+    }
+
+    // Weekly spiritual commitments & daily check-in records (contains zero PII)
+    // Readable on the home page so everyone can see cohort progress and who has been skipping
+    match /commitments/{commitmentId} {
+      allow read: if true;
+      allow create: if isAuthenticated() &&
+        uidUnchanged() &&
+        isValidCommitment(request.resource.data, commitmentId);
+      allow update: if isDocOwner() &&
+        uidNotModified() &&
+        isValidCommitment(request.resource.data, commitmentId) &&
+        request.resource.data.weekKey == resource.data.weekKey &&
+        request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+  }
+}
+

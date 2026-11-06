@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="50%" stop-color="#312e81" />
+      <stop offset="100%" stop-color="#c2410c" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#ea580c" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="url(#bg)" />
+  <!-- Tectonic mountain plates shifting -->
+  <path d="M28 136 L76 62 L112 114 L136 82 L164 136 Z" fill="none" stroke="#ffffff" stroke-width="8" stroke-linejoin="round" />
+  <path d="M24 148 L168 148" stroke="url(#accent)" stroke-width="8" stroke-linecap="round" />
+  <circle cx="96" cy="44" r="10" fill="#fbbf24" />
+</svg>
+
