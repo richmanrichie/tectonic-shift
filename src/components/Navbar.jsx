@@ -3,26 +3,60 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useTectonic } from '../context/TectonicContext';
 import { getInitials } from '../utils/weeks';
 
+function detectMobileDevice() {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || navigator.vendor || '';
+  const isTouchMobile = /android|iphone|ipad|ipod|mobile/i.test(ua);
+  const isSmallViewport = window.innerWidth <= 768;
+  return isTouchMobile || isSmallViewport;
+}
+
+function isRunningStandalone() {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+
 export default function Navbar() {
-  const { isFirebaseLive, currentUser, currentWeekInfo, logOut } = useTectonic();
+  const { currentUser, currentWeekInfo, logOut, openWalkthrough, showToast } =
+    useTectonic();
   const navigate = useNavigate();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isMobile, setIsMobile] = useState(detectMobileDevice);
+  const [isStandalone, setIsStandalone] = useState(isRunningStandalone);
 
   useEffect(() => {
     const handler = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
+    const resizeHandler = () => {
+      setIsMobile(detectMobileDevice());
+      setIsStandalone(isRunningStandalone());
+    };
     window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    window.addEventListener('resize', resizeHandler);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('resize', resizeHandler);
+    };
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+    } else {
+      showToast(
+        'To install on your phone: tap your browser menu or Share icon and select "Add to Home Screen".'
+      );
+    }
   };
+
+  const showInstallButton = !isStandalone && (deferredPrompt || isMobile);
 
   return (
     <>
@@ -43,46 +77,51 @@ export default function Navbar() {
             <div>
               <div className="brand-badge-row">
                 <span className="brand-title">Tectonic Shift</span>
-                <span
-                  className={`status-pill ${
-                    isFirebaseLive ? 'status-pill--live' : 'status-pill--demo'
-                  }`}
-                >
-                  {isFirebaseLive ? 'Firebase Live' : 'Demo Mode'}
-                </span>
               </div>
-              <p className="brand-subtitle">Spiritual Alignment &amp; Weekly Covenant</p>
+              <p className="brand-subtitle">Spiritual Alignment &amp; Weekly Commitment</p>
             </div>
           </div>
 
           <div className="header-actions">
-            {deferredPrompt && (
+            {showInstallButton && (
               <button
-                className="btn btn-outline btn-sm"
+                className={`btn btn-sm ${
+                  isMobile ? 'btn-install-mobile-highlight' : 'btn-outline'
+                }`}
                 type="button"
                 onClick={handleInstallClick}
               >
-                Install App
+                📲 Install App
               </button>
             )}
 
             {currentUser && (
-              <div className="user-chip">
-                <span className="user-avatar">
-                  {getInitials(currentUser.displayName)}
-                </span>
-                <div className="user-chip-text">
-                  <span className="user-chip-name">{currentUser.displayName}</span>
-                  <span className="user-chip-week">{currentWeekInfo.weekKey}</span>
-                </div>
+              <>
                 <button
                   className="btn btn-ghost btn-sm"
                   type="button"
-                  onClick={logOut}
+                  onClick={openWalkthrough}
+                  title="Open App Walkthrough"
                 >
-                  Sign Out
+                  ❓ Guide
                 </button>
-              </div>
+                <div className="user-chip">
+                  <span className="user-avatar">
+                    {getInitials(currentUser.displayName)}
+                  </span>
+                  <div className="user-chip-text">
+                    <span className="user-chip-name">{currentUser.displayName}</span>
+                    <span className="user-chip-week">{currentWeekInfo.weekKey}</span>
+                  </div>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    onClick={logOut}
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>

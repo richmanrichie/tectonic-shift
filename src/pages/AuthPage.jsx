@@ -28,7 +28,7 @@ export default function AuthPage() {
       await signInWithGoogle();
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      showToast(`Google Sign-In error: ${err.message || 'Unable to sign in'}`);
+      showToast(`Sign-In error: ${err.message || 'Unable to sign in'}`);
     } finally {
       setSigningIn(false);
     }
@@ -45,11 +45,11 @@ export default function AuthPage() {
             width="72"
             height="72"
           />
-          <span className="eyebrow">SPIRITUAL ALIGNMENT &amp; WEEKLY COVENANT</span>
+          <span className="eyebrow">SPIRITUAL ALIGNMENT &amp; WEEKLY COMMITMENT</span>
           <h1 className="login-title">Welcome to Tectonic Shift</h1>
           <p className="login-subtitle">
-            Sign in with your Google account to access the Dashboard, submit your weekly
-            fasting, prayer, and meditation commitments, and view cohort accountability.
+            Sign in to access the Dashboard, submit your weekly fasting, prayer, and
+            meditation commitments, and view cohort accountability.
           </p>
 
           <button
@@ -76,12 +76,11 @@ export default function AuthPage() {
                 d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
               />
             </svg>
-            <span>{signingIn ? 'Signing in with Google...' : 'Continue with Google'}</span>
+            <span>{signingIn ? 'Signing in...' : 'Continue with Google'}</span>
           </button>
 
           <p className="login-footer-note">
-            🔒 Protected Cohort Access • Only authenticated participants can view the
-            dashboard and progress board.
+            <strong>Tectonic Shift</strong> • Built by richmanrichie &copy; 2026
           </p>
         </div>
       </section>
@@ -97,7 +96,7 @@ export default function AuthPage() {
               {getInitials(currentUser.displayName)}
             </div>
             <div>
-              <span className="eyebrow">SIGNED IN WITH GOOGLE</span>
+              <span className="eyebrow">SIGNED IN PARTICIPANT</span>
               <h2 className="auth-title">{currentUser.displayName}</h2>
               <p className="auth-subtitle">{currentUser.email}</p>
             </div>

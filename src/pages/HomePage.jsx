@@ -202,7 +202,7 @@ export default function HomePage() {
             </h2>
             <p className="watchlist-subtitle">
               Participants below have either skipped multiple spiritual commitment days this
-              week or have not yet submitted their weekly covenant. Reach out to encourage
+              week or have not yet submitted their weekly commitment. Reach out to encourage
               them!
             </p>
           </div>

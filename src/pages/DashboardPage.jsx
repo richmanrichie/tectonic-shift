@@ -147,7 +147,7 @@ export default function DashboardPage() {
       {/* Top Dashboard Greeting & Week Selector */}
       <div className="dashboard-header-card">
         <div>
-          <span className="eyebrow">WEEKLY COVENANT DASHBOARD</span>
+          <span className="eyebrow">WEEKLY COMMITMENT DASHBOARD</span>
           <h2 className="section-title">
             Welcome, {currentUser ? currentUser.displayName : 'Participant'}
           </h2>
@@ -187,7 +187,7 @@ export default function DashboardPage() {
               <div className="empty-commitment-icon" aria-hidden="true">
                 🔥
               </div>
-              <h3 className="empty-commitment-title">No Covenant Recorded Yet</h3>
+              <h3 className="empty-commitment-title">No Commitment Recorded Yet</h3>
               <p className="empty-commitment-desc">
                 Your spiritual commitment for <strong>{selectedWeekObj.weekLabel}</strong>{' '}
                 has not been submitted yet.
@@ -205,7 +205,7 @@ export default function DashboardPage() {
             <div className="card readonly-commitment-card">
               <div className="readonly-header">
                 <div>
-                  <span className="eyebrow">{existingCommitment.weekKey} COVENANT</span>
+                  <span className="eyebrow">{existingCommitment.weekKey} COMMITMENT</span>
                   <h3 className="section-title" style={{ margin: '0.15rem 0' }}>
                     My Weekly Commitments Checklist
                   </h3>
@@ -424,7 +424,7 @@ export default function DashboardPage() {
                 </h3>
                 <p className="example-guide-caption">
                   Not sure how to structure your fasting, prayer, and meditation rhythm?
-                  View our recommended sample covenant.
+                  View our recommended sample commitment.
                 </p>
               </div>
               <div className="example-guide-actions">

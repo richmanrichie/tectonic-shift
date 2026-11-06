@@ -53,8 +53,28 @@ export function TectonicProvider({ children }) {
   const [commitmentsById, setCommitmentsById] = useState({});
   const [comments, setComments] = useState([]);
   const [selectedFormWeek, setSelectedFormWeek] = useState(currentWeekInfo.weekKey);
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const toastTimerRef = useRef(null);
+
+  const checkAndTriggerOnboarding = (uid) => {
+    if (!uid) return;
+    const key = `tectonic_shift_onboarded_v1_${uid}`;
+    if (!localStorage.getItem(key)) {
+      setShowWalkthrough(true);
+    }
+  };
+
+  const closeWalkthrough = () => {
+    if (currentUser?.uid) {
+      localStorage.setItem(`tectonic_shift_onboarded_v1_${currentUser.uid}`, 'true');
+    }
+    setShowWalkthrough(false);
+  };
+
+  const openWalkthrough = () => {
+    setShowWalkthrough(true);
+  };
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -87,6 +107,7 @@ export function TectonicProvider({ children }) {
     const savedUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_USER) || 'null');
     if (savedUser && savedUser.uid) {
       setCurrentUser(savedUser);
+      checkAndTriggerOnboarding(savedUser.uid);
     } else {
       setCurrentUser(null);
     }
@@ -119,6 +140,7 @@ export function TectonicProvider({ children }) {
           photoURL: user.photoURL || ''
         };
         setCurrentUser(userObj);
+        checkAndTriggerOnboarding(userObj.uid);
         await ensureParticipantDoc(userObj);
       } else {
         setCurrentUser(null);
@@ -509,6 +531,9 @@ export function TectonicProvider({ children }) {
     comments,
     selectedFormWeek,
     setSelectedFormWeek,
+    showWalkthrough,
+    openWalkthrough,
+    closeWalkthrough,
     toastMessage,
     showToast,
     saveCommitment,

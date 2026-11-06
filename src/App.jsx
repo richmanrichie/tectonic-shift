@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import OnboardingWalkthrough from './components/OnboardingWalkthrough';
 import { useTectonic } from './context/TectonicContext';
 import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
@@ -16,11 +17,25 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
-  const { authLoading, currentUser, toastMessage } = useTectonic();
+  const {
+    authLoading,
+    currentUser,
+    showWalkthrough,
+    closeWalkthrough,
+    toastMessage
+  } = useTectonic();
 
   return (
     <>
       <Navbar />
+
+      {currentUser && (
+        <OnboardingWalkthrough
+          isOpen={showWalkthrough}
+          onClose={closeWalkthrough}
+          userName={currentUser.displayName}
+        />
+      )}
 
       {toastMessage && (
         <div className="toast-banner" role="status" aria-live="polite">
@@ -99,9 +114,9 @@ export default function App() {
       <footer className="app-footer">
         <div className="container footer-inner">
           <span>
-            <strong>Tectonic Shift</strong> • Spiritual Program React PWA
+            <strong>Tectonic Shift</strong>
           </span>
-          <span>Google Sign-In • Firebase Auth &amp; Firestore</span>
+          <span>Built by richmanrichie &copy; 2026</span>
         </div>
       </footer>
     </>
