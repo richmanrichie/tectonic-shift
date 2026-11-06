@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   updateProfile,
@@ -12,6 +10,7 @@ import {
   collection,
   doc,
   setDoc,
+  addDoc,
   getDoc,
   onSnapshot,
   serverTimestamp
@@ -23,8 +22,14 @@ import {
 import {
   buildRecentWeeksList,
   computeAdherenceMetrics,
+  createDefaultDailyStatus,
+  createDefaultPillarChecks,
+  DAYS_OF_WEEK,
+  deriveDayStatusFromPillars,
   ensureSeedDemoData
 } from '../utils/weeks';
+
+const DEMO_COMMENTS_KEY = 'tectonic_shift_demo_comments_v1';
 
 const TectonicContext = createContext(null);
 
@@ -42,9 +47,11 @@ export function TectonicProvider({ children }) {
 
   const { isLive: isFirebaseLive, auth, db, config: activeConfig } = firebaseState;
 
+  const [authLoading, setAuthLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [commitmentsById, setCommitmentsById] = useState({});
+  const [comments, setComments] = useState([]);
   const [selectedFormWeek, setSelectedFormWeek] = useState(currentWeekInfo.weekKey);
   const [toastMessage, setToastMessage] = useState('');
   const toastTimerRef = useRef(null);
@@ -78,15 +85,7 @@ export function TectonicProvider({ children }) {
 
   const loadDemoData = () => {
     const savedUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_USER) || 'null');
-    if (savedUser === null) {
-      const defaultUser = {
-        uid: 'demo-p1',
-        displayName: 'Hannah Mensah',
-        email: 'hannah.mensah@example.com'
-      };
-      localStorage.setItem(STORAGE_KEYS.DEMO_USER, JSON.stringify(defaultUser));
-      setCurrentUser(defaultUser);
-    } else if (savedUser && savedUser.uid) {
+    if (savedUser && savedUser.uid) {
       setCurrentUser(savedUser);
     } else {
       setCurrentUser(null);
@@ -98,8 +97,11 @@ export function TectonicProvider({ children }) {
     setCommitmentsById(
       JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_COMMITMENTS) || '{}')
     );
+    setComments(JSON.parse(localStorage.getItem(DEMO_COMMENTS_KEY) || '[]'));
+    setAuthLoading(false);
   };
 
+  // 1. Listen to Firebase Authentication state
   useEffect(() => {
     if (!isFirebaseLive) {
       loadDemoData();
@@ -113,14 +115,30 @@ export function TectonicProvider({ children }) {
         const userObj = {
           uid: user.uid,
           displayName,
-          email: user.email || ''
+          email: user.email || '',
+          photoURL: user.photoURL || ''
         };
         setCurrentUser(userObj);
         await ensureParticipantDoc(userObj);
       } else {
         setCurrentUser(null);
+        setParticipants([]);
+        setCommitmentsById({});
+        setComments([]);
       }
+      setAuthLoading(false);
     });
+
+    return () => {
+      unsubAuth();
+    };
+  }, [isFirebaseLive, auth, db]);
+
+  // 2. Subscribe to Firestore collections ONLY when a user is signed in
+  useEffect(() => {
+    if (!isFirebaseLive || !db || !currentUser) {
+      return undefined;
+    }
 
     const unsubParticipants = onSnapshot(
       collection(db, 'participants'),
@@ -146,22 +164,71 @@ export function TectonicProvider({ children }) {
       (err) => console.warn('Commitments listener warning:', err)
     );
 
+    const unsubComments = onSnapshot(
+      collection(db, 'comments'),
+      (snap) => {
+        const list = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          const createdMs = data.createdAt?.toMillis
+            ? data.createdAt.toMillis()
+            : data.createdAtISO
+            ? new Date(data.createdAtISO).getTime()
+            : Date.now();
+          list.push({ id: docSnap.id, ...data, createdMs });
+        });
+        setComments(list);
+      },
+      (err) => console.warn('Comments listener warning:', err)
+    );
+
     return () => {
-      unsubAuth();
       unsubParticipants();
       unsubCommitments();
+      unsubComments();
     };
-  }, [isFirebaseLive, auth, db]);
+  }, [isFirebaseLive, db, currentUser?.uid]);
 
-  // Save or update weekly commitment
+  // Helper to normalize pillarChecks from an existing commitment
+  const getNormalizedPillarChecks = (commitment) => {
+    const base = createDefaultPillarChecks();
+    if (!commitment) return base;
+
+    const dailyStatus = commitment.dailyStatus || {};
+    const existingChecks = commitment.pillarChecks || {};
+
+    DAYS_OF_WEEK.forEach(({ key }) => {
+      if (existingChecks[key]) {
+        base[key] = {
+          fasting: Boolean(existingChecks[key].fasting),
+          prayer: Boolean(existingChecks[key].prayer),
+          meditation: Boolean(existingChecks[key].meditation)
+        };
+      } else if (dailyStatus[key] === 'completed') {
+        base[key] = { fasting: true, prayer: true, meditation: true };
+      }
+    });
+
+    return base;
+  };
+
+  // Save or update weekly commitment (dailyStatus is strictly derived from pillarChecks)
   const saveCommitment = async (weekKey, formValues) => {
     if (!currentUser) {
-      throw new Error('Please sign in first to save your commitment.');
+      throw new Error('Please sign in with Google first to save your commitment.');
     }
 
     const weekObj = weeksList.find((w) => w.weekKey === weekKey) || currentWeekInfo;
     const docId = `${currentUser.uid}_${weekKey}`;
-    const metrics = computeAdherenceMetrics(formValues.dailyStatus);
+    const existing = commitmentsById[docId];
+    const pillarChecks = formValues.pillarChecks || getNormalizedPillarChecks(existing);
+
+    const derivedDailyStatus = createDefaultDailyStatus();
+    DAYS_OF_WEEK.forEach(({ key }) => {
+      derivedDailyStatus[key] = deriveDayStatusFromPillars(pillarChecks[key], 'pending');
+    });
+
+    const metrics = computeAdherenceMetrics(derivedDailyStatus);
 
     const payloadBase = {
       uid: currentUser.uid,
@@ -178,7 +245,8 @@ export function TectonicProvider({ children }) {
       ),
       meditationTimeRange: formValues.meditationTimeRange.trim().slice(0, 200),
       reflectionNotes: (formValues.reflectionNotes || '').trim().slice(0, 500),
-      dailyStatus: { ...formValues.dailyStatus },
+      dailyStatus: derivedDailyStatus,
+      pillarChecks,
       completedCount: metrics.completedCount,
       skippedCount: metrics.skippedCount,
       adherenceStatus: metrics.adherenceStatus
@@ -225,59 +293,148 @@ export function TectonicProvider({ children }) {
     showToast(`Commitment saved for ${weekObj.weekKey}!`);
   };
 
-  // Sign In / Sign Up
-  const authenticateWithEmail = async ({ mode, email, password, displayName }) => {
-    if (isFirebaseLive && auth) {
-      if (mode === 'signup') {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(cred.user, { displayName });
-        const userObj = {
-          uid: cred.user.uid,
-          displayName,
-          email: cred.user.email
-        };
-        setCurrentUser(userObj);
-        await ensureParticipantDoc(userObj);
-        showToast(`Welcome to Tectonic Shift, ${displayName}!`);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-        showToast('Signed in successfully!');
-      }
-    } else {
-      const derivedName =
-        displayName ||
-        email
-          .split('@')[0]
-          .replace(/[._]/g, ' ')
-          .replace(/\b\w/g, (c) => c.toUpperCase());
-      const uid = `demo-${email.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-      const userObj = { uid, displayName: derivedName, email };
-      localStorage.setItem(STORAGE_KEYS.DEMO_USER, JSON.stringify(userObj));
+  // Toggle an individual commitment checkbox (Fasting, Prayer, or Meditation) for a day
+  const toggleCommitmentPillar = async (weekKey, dayKey, pillarKey) => {
+    if (!currentUser) return;
+    const docId = `${currentUser.uid}_${weekKey}`;
+    const existing = commitmentsById[docId];
+    if (!existing) return;
 
-      const storedParticipants = JSON.parse(
-        localStorage.getItem(STORAGE_KEYS.DEMO_PARTICIPANTS) || '[]'
-      );
-      if (!storedParticipants.some((p) => p.uid === uid)) {
-        storedParticipants.push({
-          uid,
-          displayName: derivedName,
-          cohortRole: 'Participant'
-        });
-        localStorage.setItem(
-          STORAGE_KEYS.DEMO_PARTICIPANTS,
-          JSON.stringify(storedParticipants)
-        );
+    const pillarChecks = getNormalizedPillarChecks(existing);
+    const currentDayChecks = pillarChecks[dayKey] || {
+      fasting: false,
+      prayer: false,
+      meditation: false
+    };
+
+    const nextValue = !currentDayChecks[pillarKey];
+    const updatedDayChecks = {
+      ...currentDayChecks,
+      [pillarKey]: nextValue
+    };
+    const updatedPillarChecks = {
+      ...pillarChecks,
+      [dayKey]: updatedDayChecks
+    };
+
+    const currentDailyStatus = {
+      ...createDefaultDailyStatus(),
+      ...(existing.dailyStatus || {})
+    };
+    const updatedDayStatus = deriveDayStatusFromPillars(
+      updatedDayChecks,
+      currentDailyStatus[dayKey]
+    );
+    const updatedDailyStatus = {
+      ...currentDailyStatus,
+      [dayKey]: updatedDayStatus
+    };
+
+    const metrics = computeAdherenceMetrics(updatedDailyStatus);
+
+    const updatedRecord = {
+      uid: existing.uid,
+      displayName: existing.displayName,
+      weekKey: existing.weekKey,
+      weekLabel: existing.weekLabel,
+      fastingCommitment: existing.fastingCommitment,
+      prayerMinutes: existing.prayerMinutes,
+      prayerTimes: existing.prayerTimes,
+      prayerAltTimes: existing.prayerAltTimes,
+      meditationMinutes: existing.meditationMinutes,
+      meditationTimeRange: existing.meditationTimeRange,
+      reflectionNotes: existing.reflectionNotes || '',
+      dailyStatus: updatedDailyStatus,
+      pillarChecks: updatedPillarChecks,
+      completedCount: metrics.completedCount,
+      skippedCount: metrics.skippedCount,
+      adherenceStatus: metrics.adherenceStatus
+    };
+
+    // Optimistic state update
+    setCommitmentsById((prev) => ({
+      ...prev,
+      [docId]: {
+        ...existing,
+        ...updatedRecord
       }
-      loadDemoData();
-      showToast(`Signed in as ${derivedName}`);
+    }));
+
+    if (isFirebaseLive && db) {
+      const ref = doc(db, 'commitments', docId);
+      await setDoc(ref, {
+        ...updatedRecord,
+        createdAt: existing.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      const storedCommitments = JSON.parse(
+        localStorage.getItem(STORAGE_KEYS.DEMO_COMMITMENTS) || '{}'
+      );
+      storedCommitments[docId] = {
+        ...existing,
+        ...updatedRecord,
+        updatedAtISO: new Date().toISOString()
+      };
+      localStorage.setItem(STORAGE_KEYS.DEMO_COMMITMENTS, JSON.stringify(storedCommitments));
     }
+
+    const labelMap = {
+      fasting: 'Fasting Commitment',
+      prayer: 'Prayer Commitment',
+      meditation: 'Meditation Commitment'
+    };
+    showToast(
+      `${labelMap[pillarKey]} marked ${nextValue ? 'Done ✓' : 'Pending'} for ${dayKey.toUpperCase()}`
+    );
   };
 
+  // Add a comment or reply to the weekly experience feed
+  const addComment = async ({ weekKey, text, parentId = '' }) => {
+    if (!currentUser) {
+      throw new Error('Please sign in first to post a comment.');
+    }
+    const cleanText = text.trim().slice(0, 1000);
+    if (!cleanText) return;
+
+    if (isFirebaseLive && db) {
+      await addDoc(collection(db, 'comments'), {
+        uid: currentUser.uid,
+        displayName: currentUser.displayName.slice(0, 80),
+        weekKey,
+        text: cleanText,
+        parentId: parentId || '',
+        createdAt: serverTimestamp()
+      });
+    } else {
+      const stored = JSON.parse(localStorage.getItem(DEMO_COMMENTS_KEY) || '[]');
+      const newComment = {
+        id: `demo-c-${Date.now()}`,
+        uid: currentUser.uid,
+        displayName: currentUser.displayName.slice(0, 80),
+        weekKey,
+        text: cleanText,
+        parentId: parentId || '',
+        createdAtISO: new Date().toISOString(),
+        createdMs: Date.now()
+      };
+      const updated = [...stored, newComment];
+      localStorage.setItem(DEMO_COMMENTS_KEY, JSON.stringify(updated));
+      setComments(updated);
+    }
+
+    showToast(parentId ? 'Reply posted!' : 'Experience shared to the weekly feed!');
+  };
+
+  // Google Sign-In
   const signInWithGoogle = async () => {
     if (isFirebaseLive && auth) {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       const res = await signInWithPopup(auth, provider);
-      const name = res.user.displayName || 'Participant';
+      const name =
+        res.user.displayName ||
+        (res.user.email ? res.user.email.split('@')[0] : 'Participant');
       await ensureParticipantDoc({
         uid: res.user.uid,
         displayName: name,
@@ -300,7 +457,7 @@ export function TectonicProvider({ children }) {
     if (isFirebaseLive && auth) {
       await signOut(auth);
     } else {
-      localStorage.setItem(STORAGE_KEYS.DEMO_USER, JSON.stringify({}));
+      localStorage.removeItem(STORAGE_KEYS.DEMO_USER);
       loadDemoData();
     }
     showToast('Signed out.');
@@ -343,17 +500,21 @@ export function TectonicProvider({ children }) {
   const value = {
     isFirebaseLive,
     activeConfig,
+    authLoading,
     weeksList,
     currentWeekInfo,
     currentUser,
     participants,
     commitmentsById,
+    comments,
     selectedFormWeek,
     setSelectedFormWeek,
     toastMessage,
     showToast,
     saveCommitment,
-    authenticateWithEmail,
+    toggleCommitmentPillar,
+     getNormalizedPillarChecks,
+    addComment,
     signInWithGoogle,
     logOut,
     updateUserDisplayName
@@ -369,4 +530,3 @@ export function useTectonic() {
   }
   return ctx;
 }
-

@@ -77,6 +77,29 @@ export function createDefaultDailyStatus() {
   };
 }
 
+export function createDefaultPillarChecks() {
+  const checks = {};
+  DAYS_OF_WEEK.forEach(({ key }) => {
+    checks[key] = {
+      fasting: false,
+      prayer: false,
+      meditation: false
+    };
+  });
+  return checks;
+}
+
+export function deriveDayStatusFromPillars(dayChecks, currentDayStatus = 'pending') {
+  if (!dayChecks) return currentDayStatus;
+  const count =
+    (dayChecks.fasting ? 1 : 0) +
+    (dayChecks.prayer ? 1 : 0) +
+    (dayChecks.meditation ? 1 : 0);
+  if (count === 3) return 'completed';
+  if (count > 0) return 'partial';
+  return currentDayStatus === 'skipped' ? 'skipped' : 'pending';
+}
+
 export function computeAdherenceMetrics(dailyStatus = {}) {
   let completedCount = 0;
   let partialCount = 0;
@@ -117,6 +140,7 @@ export function ensureSeedDemoData(weeksList) {
 
   let participants = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_PARTICIPANTS) || 'null');
   let commitments = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_COMMITMENTS) || 'null');
+  let comments = JSON.parse(localStorage.getItem('tectonic_shift_demo_comments_v1') || 'null');
 
   if (!participants || !Array.isArray(participants) || participants.length === 0) {
     participants = [
@@ -315,5 +339,37 @@ export function ensureSeedDemoData(weeksList) {
     };
     localStorage.setItem(STORAGE_KEYS.DEMO_COMMITMENTS, JSON.stringify(commitments));
   }
-}
 
+  if (!comments || !Array.isArray(comments)) {
+    comments = [
+      {
+        id: 'demo-c1',
+        uid: 'demo-p4',
+        displayName: 'Miriam Adeyemi',
+        weekKey: currentWeek.weekKey,
+        text: 'Day 3 of the 6 AM – 4 PM water fast was tough around noon, but using my backup prayer slot at 12:30 PM completely shifted my focus. Stay strong everyone!',
+        parentId: '',
+        createdAtISO: new Date(Date.now() - 5 * 3600000).toISOString()
+      },
+      {
+        id: 'demo-c2',
+        uid: 'demo-p1',
+        displayName: 'Hannah Mensah',
+        weekKey: currentWeek.weekKey,
+        text: 'Amen Miriam! Psalm 63 during morning meditation has been carrying me through.',
+        parentId: 'demo-c1',
+        createdAtISO: new Date(Date.now() - 3 * 3600000).toISOString()
+      },
+      {
+        id: 'demo-c3',
+        uid: 'demo-p3',
+        displayName: 'Caleb Nwosu',
+        weekKey: currentWeek.weekKey,
+        text: 'I missed my morning slot on Tuesday, but having the evening alternative time helped me recover my rhythm yesterday.',
+        parentId: '',
+        createdAtISO: new Date(Date.now() - 2 * 3600000).toISOString()
+      }
+    ];
+    localStorage.setItem('tectonic_shift_demo_comments_v1', JSON.stringify(comments));
+  }
+}

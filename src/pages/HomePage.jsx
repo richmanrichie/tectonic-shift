@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import WeeklyCommentsFeed from '../components/WeeklyCommentsFeed';
 import { useTectonic } from '../context/TectonicContext';
 import {
   computeAdherenceMetrics,
@@ -405,6 +406,12 @@ export default function HomePage() {
           })
         )}
       </div>
+
+      {/* Weekly Experience Feed & Comments Section */}
+      <WeeklyCommentsFeed
+        weekKey={selectedWeekObj.weekKey}
+        weekLabel={selectedWeekObj.weekLabel}
+      />
     </section>
   );
 }

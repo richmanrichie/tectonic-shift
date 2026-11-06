@@ -3,10 +3,9 @@
     "rules": "firestore.rules"
   },
   "hosting": {
-    "public": "dist",
+    "public": "public",
     "ignore": [
       "firebase.json",
-      "firestore.rules",
       "**/.*",
       "**/node_modules/**"
     ],

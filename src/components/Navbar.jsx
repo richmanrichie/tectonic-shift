@@ -31,7 +31,7 @@ export default function Navbar() {
           <div
             className="brand"
             style={{ cursor: 'pointer' }}
-            onClick={() => navigate('/')}
+            onClick={() => navigate(currentUser ? '/dashboard' : '/login')}
           >
             <img
               src="/icons/icon-192.svg"
@@ -48,7 +48,7 @@ export default function Navbar() {
                     isFirebaseLive ? 'status-pill--live' : 'status-pill--demo'
                   }`}
                 >
-                  {isFirebaseLive ? 'Firebase Live' : 'Demo Cohort Mode'}
+                  {isFirebaseLive ? 'Firebase Live' : 'Demo Mode'}
                 </span>
               </div>
               <p className="brand-subtitle">Spiritual Alignment &amp; Weekly Covenant</p>
@@ -66,7 +66,7 @@ export default function Navbar() {
               </button>
             )}
 
-            {currentUser ? (
+            {currentUser && (
               <div className="user-chip">
                 <span className="user-avatar">
                   {getInitials(currentUser.displayName)}
@@ -83,64 +83,57 @@ export default function Navbar() {
                   Sign Out
                 </button>
               </div>
-            ) : (
-              <button
-                className="btn btn-primary btn-sm"
-                type="button"
-                onClick={() => navigate('/auth')}
-              >
-                Sign In / Join
-              </button>
             )}
           </div>
         </div>
       </header>
 
-      <nav className="app-nav" aria-label="Primary Page Navigation">
-        <div className="container nav-tabs">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-tab-icon" aria-hidden="true">
-              🌍
-            </span>
-            <span>Community Progress</span>
-          </NavLink>
+      {/* Only authenticated users can see the navigation bar to Dashboard / Community / History */}
+      {currentUser && (
+        <nav className="app-nav" aria-label="Primary Page Navigation">
+          <div className="container nav-tabs">
+            <NavLink
+              to="/dashboard"
+              className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
+            >
+              <span className="nav-tab-icon" aria-hidden="true">
+                🔥
+              </span>
+              <span>Dashboard</span>
+            </NavLink>
 
-          <NavLink
-            to="/dashboard"
-            className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-tab-icon" aria-hidden="true">
-              🔥
-            </span>
-            <span>My Commitment</span>
-          </NavLink>
+            <NavLink
+              to="/community"
+              className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
+            >
+              <span className="nav-tab-icon" aria-hidden="true">
+                🌍
+              </span>
+              <span>Community Progress</span>
+            </NavLink>
 
-          <NavLink
-            to="/history"
-            className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-tab-icon" aria-hidden="true">
-              📜
-            </span>
-            <span>History</span>
-          </NavLink>
+            <NavLink
+              to="/history"
+              className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
+            >
+              <span className="nav-tab-icon" aria-hidden="true">
+                📜
+              </span>
+              <span>History</span>
+            </NavLink>
 
-          <NavLink
-            to="/auth"
-            className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-tab-icon" aria-hidden="true">
-              🔐
-            </span>
-            <span>{currentUser ? 'Account' : 'Sign In'}</span>
-          </NavLink>
-        </div>
-      </nav>
+            <NavLink
+              to="/account"
+              className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
+            >
+              <span className="nav-tab-icon" aria-hidden="true">
+                👤
+              </span>
+              <span>Account</span>
+            </NavLink>
+          </div>
+        </nav>
+      )}
     </>
   );
 }
-

@@ -28,11 +28,22 @@ rules_version = '2';
 //   - meditationTimeRange: string (required, 1..200 chars)
 //   - reflectionNotes: string (required, 0..500 chars)
 //   - dailyStatus: map (required, keys: mon, tue, wed, thu, fri, sat, sun)
+//   - pillarChecks: map (optional, keys: mon..sun, each with fasting/prayer/meditation bools)
 //   - completedCount: number (required, 0..7)
 //   - skippedCount: number (required, 0..7)
 //   - adherenceStatus: string (required, in ['on-track', 'slipping', 'skipping'])
 //   - createdAt: timestamp (required, immutable on update)
 //   - updatedAt: timestamp (required)
+//
+// Collection: comments
+// Document ID: {commentId} (auto-generated)
+// Fields:
+//   - uid: string (required, immutable, == request.auth.uid)
+//   - displayName: string (required, 1..80 chars)
+//   - weekKey: string (required, immutable, matches "^\\d{4}-W\\d{2}$")
+//   - text: string (required, 1..1000 chars)
+//   - parentId: string (required, 0..120 chars, "" for root post or parent comment ID)
+//   - createdAt: timestamp (required, immutable)
 // ===============================================================
 
 service cloud.firestore {
@@ -88,6 +99,26 @@ service cloud.firestore {
         isValidDayStatusValue(dailyMap.sun);
     }
 
+    function isValidDayPillarCheck(dayObj) {
+      return dayObj is map &&
+        dayObj.keys().hasOnly(['fasting', 'prayer', 'meditation']) &&
+        dayObj.fasting is bool &&
+        dayObj.prayer is bool &&
+        dayObj.meditation is bool;
+    }
+
+    function isValidPillarChecksMap(checksMap) {
+      return checksMap is map &&
+        checksMap.keys().hasOnly(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) &&
+        isValidDayPillarCheck(checksMap.mon) &&
+        isValidDayPillarCheck(checksMap.tue) &&
+        isValidDayPillarCheck(checksMap.wed) &&
+        isValidDayPillarCheck(checksMap.thu) &&
+        isValidDayPillarCheck(checksMap.fri) &&
+        isValidDayPillarCheck(checksMap.sat) &&
+        isValidDayPillarCheck(checksMap.sun);
+    }
+
     // ===============================================================
     // Domain Validators (Used in BOTH create and update)
     // ===============================================================
@@ -102,7 +133,7 @@ service cloud.firestore {
     }
 
     function isValidCommitment(data, commitmentId) {
-      let allowedFields = [
+      let requiredFields = [
         'uid',
         'displayName',
         'weekKey',
@@ -121,8 +152,28 @@ service cloud.firestore {
         'createdAt',
         'updatedAt'
       ];
+      let allowedFields = [
+        'uid',
+        'displayName',
+        'weekKey',
+        'weekLabel',
+        'fastingCommitment',
+        'prayerMinutes',
+        'prayerTimes',
+        'prayerAltTimes',
+        'meditationMinutes',
+        'meditationTimeRange',
+        'reflectionNotes',
+        'dailyStatus',
+        'pillarChecks',
+        'completedCount',
+        'skippedCount',
+        'adherenceStatus',
+        'createdAt',
+        'updatedAt'
+      ];
       return hasOnlyAllowedFields(allowedFields) &&
-        hasRequiredFields(allowedFields) &&
+        hasRequiredFields(requiredFields) &&
         data.uid is string && data.uid == request.auth.uid &&
         commitmentId == (data.uid + '_' + data.weekKey) &&
         data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
@@ -136,6 +187,7 @@ service cloud.firestore {
         data.meditationTimeRange is string && data.meditationTimeRange.size() >= 1 && data.meditationTimeRange.size() <= 200 &&
         data.reflectionNotes is string && data.reflectionNotes.size() <= 500 &&
         isValidDailyStatusMap(data.dailyStatus) &&
+        (!('pillarChecks' in data) || isValidPillarChecksMap(data.pillarChecks)) &&
         data.completedCount is number && data.completedCount >= 0 && data.completedCount <= 7 &&
         data.skippedCount is number && data.skippedCount >= 0 && data.skippedCount <= 7 &&
         data.adherenceStatus is string && data.adherenceStatus in ['on-track', 'slipping', 'skipping'] &&
@@ -143,14 +195,24 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidComment(data) {
+      let fields = ['uid', 'displayName', 'weekKey', 'text', 'parentId', 'createdAt'];
+      return hasOnlyAllowedFields(fields) &&
+        hasRequiredFields(fields) &&
+        data.uid is string && data.uid == request.auth.uid &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        data.weekKey is string && data.weekKey.matches("^\\d{4}-W\\d{2}$") &&
+        data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+        data.parentId is string && data.parentId.size() <= 120 &&
+        data.createdAt is timestamp;
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
 
-    // Public cohort participants directory (contains zero PII / no emails)
-    // Explicitly readable on the home page so everyone can see everyone's progress
     match /participants/{userId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow create: if isOwner(userId) &&
         uidUnchanged() &&
         isValidParticipant(request.resource.data, userId);
@@ -161,10 +223,8 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Weekly spiritual commitments & daily check-in records (contains zero PII)
-    // Readable on the home page so everyone can see cohort progress and who has been skipping
     match /commitments/{commitmentId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() &&
         uidUnchanged() &&
         isValidCommitment(request.resource.data, commitmentId);
@@ -175,6 +235,19 @@ service cloud.firestore {
         request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if false;
     }
+
+    match /comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        uidUnchanged() &&
+        isValidComment(request.resource.data);
+      allow update: if isDocOwner() &&
+        uidNotModified() &&
+        isValidComment(request.resource.data) &&
+        request.resource.data.weekKey == resource.data.weekKey &&
+        request.resource.data.parentId == resource.data.parentId &&
+        request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
   }
 }
-
